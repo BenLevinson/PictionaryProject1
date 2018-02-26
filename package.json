@@ -1,0 +1,29 @@
+{
+  "name": "package.json",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node ./src/server.js",
+    "pretest": "eslint ./src --fix",
+    "test": "echo \"Tests complete\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BenLevinson/PictionaryProject1.git"
+  },
+  "author": "Ben Levinson",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/BenLevinson/PictionaryProject1/issues"
+  },
+  "homepage": "https://github.com/BenLevinson/PictionaryProject1#readme",
+  "devDependencies": {
+    "eslint": "^4.18.1",
+    "eslint-config-airbnb": "^16.1.0",
+    "eslint-plugin-import": "^2.9.0"
+  },
+  "dependencies": {
+    "socket.io": "^2.0.4"
+  }
+}

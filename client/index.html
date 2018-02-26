@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <style>
+        body {
+            background: #EEEEEE;
+            font-family: tahoma, verdana, sans serif;
+            width: 100%;
+        }
+        textarea {
+            resize: none;
+            height: 400px;
+        }
+        #canvasGame {
+            display: none;
+            
+        }
+        #title {
+            text-align: center;
+            font-size: 60px;
+            position: relative;
+            top: -20px;
+        }
+        #mainCanvas {
+            background: #ffffff;
+            display: block;
+            z-index: 1;
+            position: absolute;
+            left: 600px;
+            margin: auto;
+            box-shadow: 4px 4px 8px rgba(0,0,0,0.5);
+        }
+        #controls {
+            z-index: 2;
+            display: block;
+            position: relative;
+            left: 675px;
+            margin: auto;
+        }
+        #webChat {
+            display: none;
+            position: absolute;
+            margin: auto;
+            left: 100px;
+            top: 0;
+            height: 500px;
+            bottom: 0;
+            right: 0;
+            z-index: 0;
+        }
+        #message {
+            width: 300px;
+        }
+        #send {
+            width: 50px;
+        }
+        #startRoom {
+            color: black;
+            background-color: white;
+            width: 400px;
+            text-align: center;
+            border: 1px solid black;
+            height: 200px;
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            margin: auto;
+        }
+        #startRoom label {
+            position: relative;
+            font-size: 30px;
+            top: 28px;
+        }
+        #startRoom input {
+            height: 30px;
+            position: relative;
+            top: 25px;
+        }
+        #startRoom input[type="text"] {
+            font-size: 18px;
+        }
+        #connect {
+            width: 200px;
+            font-size: 20px;
+        }
+        #connect:hover{
+            cursor: pointer;
+        }
+        #startButton {
+            width: 200px;
+            font-size: 20px;
+            display: none;
+            position: relative;
+            top: 20px;
+            right: 20px;
+            margin: auto;
+        }
+        #startButton:hover{
+            cursor: pointer;
+        }
+        #wordDiv {
+            text-align: center;
+            display: none;
+            font-size: 20px;
+            position: relative;
+            top: 20px;
+            right: 20px;
+            margin: auto;
+        }
+        label {
+            font-size: 12px;
+            margin-right:0.75em;
+        }
+        textarea {
+            display: block;
+			background-color: white;
+        }
+    </style>
+    <script src="https://npmcdn.com/babel-core@5.8.38/browser.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script type="text/babel" >
+        "use strict";
+
+	    let canvas,ctx,lineWidth,strokeStyle,currentTool,fillStyle,topCanvas,topCtx,user,roomNum,socket,mouseX,mouseY,prevX,prevY,mousedown,widthChange,strokeChange,fillChange,toolChange;
+        const startButton = document.querySelector("#startButton");
+        const message = document.querySelector("#message");
+        const chat = document.querySelector("#chat");
+        chat.innerHTML = "";
+        document.querySelector("#disconnect").style.display = "none";
+
+        const DEFAULT_LINE_WIDTH = 5;
+        const DEFAULT_STROKE_STYLE = 'red';
+        const DEFAULT_FILL_STYLE = 'blue';
+        const TOOL_PENCIL = 'toolPencil';
+        const TOOL_BRUSH = 'toolBrush';
+
+        const doClear = () => {
+            // clear canvases
+            ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+            topCtx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        };
+
+        const drawToCanvas = () => {
+            // draw to canvas with specified tool, width, and color
+            switch(currentTool) {
+                case TOOL_PENCIL:
+                    topCtx.lineWidth = lineWidth;
+                    topCtx.strokeStyle = strokeStyle;
+                    topCtx.beginPath();
+                    topCtx.moveTo(prevX, prevY);
+                    topCtx.lineTo(mouseX, mouseY);
+                    topCtx.closePath();
+                    topCtx.stroke();
+                    break;
+                case TOOL_BRUSH:
+                    topCtx.fillStyle = fillStyle; 
+                    topCtx.beginPath();
+                    topCtx.arc(mouseX, mouseY, lineWidth, 0, Math.PI*2);
+                    topCtx.closePath();
+                    topCtx.fill();
+                    break;
+            }
+            
+            const canvasData = topCanvas.toDataURL();
+            
+            const data = {
+                imgData: canvasData,
+                x: 0,
+                y: 0,
+                width: canvas.width,
+                height: canvas.height,
+            };
+            socket.emit('draw', data);
+        };
+        
+        const getPos = (canvas, e) => {
+            // get position of mouse and make sure it's in area of the canvas to draw
+            prevX = mouseX;
+            prevY = mouseY;
+            var area = canvas.getBoundingClientRect();
+            mouseX = e.clientX - area.left;
+            mouseY = e.clientY - area.top;
+        };
+
+        const init = () => {
+            canvas = document.querySelector('#mainCanvas');
+            ctx = canvas.getContext('2d');
+
+            lineWidth = DEFAULT_LINE_WIDTH;
+            strokeStyle = DEFAULT_STROKE_STYLE;
+            fillStyle = DEFAULT_FILL_STYLE;
+            currentTool = TOOL_PENCIL;
+
+            ctx.lineWidth = lineWidth;
+            ctx.strokeStyle = strokeStyle;
+            ctx.fillStyle = fillStyle;
+
+            // tools
+            document.querySelector('#lineWidthChooser').onchange = function(e) {
+                lineWidth = e.target.value;
+            }
+		    document.querySelector('#strokeStyleChooser').onchange = function(e) {
+                strokeStyle = e.target.value;
+            }
+            document.querySelector('#fillStyleChooser').onchange = function(e) {
+                fillStyle = e.target.value;
+            }
+            
+            document.querySelector('#toolChooser').onchange = function(e) {
+                currentTool = e.target.value;
+		    }
+            
+            // canvas event listeners 
+            canvas.addEventListener('mousemove', (e) => {
+                getPos(canvas, e);
+                if(mousedown) {
+                    switch(currentTool) {
+                        case TOOL_PENCIL:
+                            ctx.lineWidth = lineWidth;
+                            ctx.beginPath();
+                            ctx.moveTo(prevX, prevY);
+                            ctx.lineTo(mouseX, mouseY);
+                            ctx.closePath();
+                            ctx.stroke();
+                            break;
+                        case TOOL_BRUSH:
+                            ctx.beginPath();
+                            ctx.arc(mouseX, mouseY, lineWidth, 0, Math.PI*2);
+                            ctx.closePath();
+                            ctx.fill();
+                            break;
+                    }
+                    drawToCanvas();
+                }
+            }, false);
+            
+            canvas.addEventListener('mousedown', () => {
+                mousedown = true;
+            });
+            canvas.addEventListener('mouseup', () => {
+               mousedown = false; 
+            });
+            
+            // set up chat events
+            const connect = document.querySelector("#connect");
+            const send = document.querySelector("#send");
+            const disconnect = document.querySelector("#disconnect");
+            const startBut = document.querySelector("#startButton");
+            connect.addEventListener('click', connectSocket);
+            send.addEventListener('click', sendMsg);    
+            disconnect.addEventListener('click', disconnectSocket);   
+            startBut.addEventListener('click', startSocket);
+            //socket = io.connect();
+            //connectSocket();
+        };
+
+        const connectSocket = () => {
+            // connect socket when they join the room
+            socket = io.connect();
+            user = document.querySelector("#username").value;
+            roomNum = document.querySelector("#roomNum").value;
+            socket.on('connect', () => {
+                if(!user) {
+                    user = 'unknown';   
+                }
+                socket.emit('join', { name: user, room: roomNum });
+            });
+            socket.on('msg', (data) => {
+                chat.innerHTML += data.name + ": " + data.msg + '\n';
+            });
+            // hide connect button and show disconnect button
+            document.querySelector('#connect').style.display = "none";
+            document.querySelector('#startRoom').style.display = "none";
+            document.querySelector('#canvasGame').style.display = "block";
+            document.querySelector('#webChat').style.display = "block";
+            startButton.style.display = "block";
+            //document.querySelector('#disconnect').style.display = "inline-block";
+            //socket.emit('join');
+            
+            // handle canvas events
+            topCanvas = document.createElement("canvas");
+            topCanvas.height = canvas.height;
+            topCanvas.width = canvas.width;
+            topCtx = topCanvas.getContext('2d');
+            
+            socket.on('drawCanvas', (data) => {
+                let canvasImg = new Image();
+                
+                canvasImg.onload = () => {
+                    ctx.save();
+                    ctx.globalCompositeOperation = "source-over";
+                    ctx.drawImage(canvasImg, data.x, data.y, data.width, data.height);
+                    ctx.restore();
+                };
+                
+                canvasImg.src = data.imgData;
+            });
+            
+            document.querySelector('#clearButton').onclick = function() {
+                socket.emit("clear");
+            }
+            
+            socket.on('clearCanvas', () => {
+                doClear();
+            });
+        };
+        const startSocket = (e) => {
+            socket.emit('clickStart');
+            socket.on('checkUsers', (data) => {
+                if(data.numUsers >= 2) {
+                    startRound();
+                    //startButton.style.display = "none";
+                }
+                else {
+                    const startFail = {
+                        name: "Server",
+                        msg: "Not enough players to start!",
+                    };
+                    socket.emit('msgToServer', startFail);
+                }
+            });
+        };
+        const sendMsg = (e) => {
+            // handle sent messages
+            let msgSent = {
+                name: user,
+                msg: message.value,
+            };
+            
+            socket.emit('msgToServer', msgSent);
+            message.value = "";
+        };
+        const disconnectSocket = (e) => {
+            // handle if a user disconnects
+            const discSent = {
+                name: "Server",
+                msg: user + " has left the room.",
+            };
+            socket.emit('dcMsg', discSent);
+            socket.on('userLeave', (data) => {
+                if(data.numUsers < 2) {
+                    endGame();
+                }
+            });
+            socket.emit("disconnect");
+            chat.innerHTML += 'Server: You have left the room.' + '\n';
+            socket.disconnect();
+            
+            //document.querySelector('#disconnect').style.display = "none";
+            //document.querySelector('#connect').style.display = "inline-block";
+        };
+
+        const startRound = () => {
+            socket.emit('chooseWord');
+            socket.on('showWord', (data) => {
+                const startMsg = {
+                    name: "Server",
+                    msg:  data.currArtist + " is the artist. They will try to draw the randomly generated word.",
+                };
+                socket.emit('msgToServer', startMsg);
+                user = document.querySelector("#username").value;
+                var wordDiv = document.querySelector("#wordDiv");
+                wordDiv.style.display = "block";
+                if(user === data.currArtist) 
+                    wordDiv.innerHTML = "Your word is " + data.currWord;
+                else
+                    wordDiv.innerHTML = "Try to guess what the artist is drawing!";
+            });
+            socket.on('endRound', () => {
+                const endMsg = {
+                    name: "Server",
+                    msg:  "Starting new round...",
+                };
+                socket.emit('msgToServer', endMsg);
+                socket.emit('nextRound');
+            });
+
+        }
+        
+        const endGame = () => {
+            console.log("Game ended");
+        };
+
+        window.onload = init;
+    </script>
+</head>
+<body>
+    <h1 id="title"> Pictionary </h1>
+    <div id="canvasGame">
+        <div id="controls">
+            <label>Tool:
+                <select id="toolChooser">
+                    <option value="toolPencil" selected>Pencil</option>
+                    <option value="toolBrush">Brush</option>
+                </select>
+            </label>
+            <label> Stroke Color:
+                <select id="strokeStyleChooser">
+                    <option value="red" selected>Red</option>
+                    <option value="orange">Orange</option>
+                    <option value="yellow">Yellow</option>
+                    <option value="green">Green</option>
+                    <option value="blue">Blue</option>
+                    <option value="purple">Purple</option>
+                    <option value="pink">Pink</option>
+                    <option value="indigo">Indigo</option>
+                    <option value="violet">Violet</option>
+                    <option value="black">Black</option>
+                    <option value="white">White</option>
+                    <option value="brown">Brown</option>
+                </select>
+            </label>
+            <label>Line Width: 
+                <select id="lineWidthChooser">
+                    <option value="5" selected>5</option>
+                    <option value="10">10</option>
+                    <option value="15">15</option>
+                    <option value="20">20</option>
+                    <option value="25">25</option>
+                    <option value="30">30</option>
+                    <option value="35">35</option>
+                    <option value="40">40</option>
+                    <option value="45">45</option>
+                    <option value="50">50</option>
+                </select>
+            </label>
+            <label> Fill Color:
+                <select id="fillStyleChooser">
+                    <option value="red">Red</option>
+                    <option value="orange">Orange</option>
+                    <option value="yellow">Yellow</option>
+                    <option value="green">Green</option>
+                    <option value="blue" selected>Blue</option>
+                    <option value="purple">Purple</option>
+                    <option value="pink">Pink</option>
+                    <option value="indigo">Indigo</option>
+                    <option value="violet">Violet</option>
+                    <option value="black">Black</option>
+                    <option value="white">White</option>
+                    <option value="brown">Brown</option>
+                </select>
+            </label>
+            <span><input id="clearButton" type="button" value="Clear"/></span>
+        </div>
+        <br>
+        <canvas id="mainCanvas" width="700" height="500">
+        Get a real browser!
+        </canvas>
+        <canvas id="topCanvas" width="700" height="500">
+        Get a real browser!
+        </canvas>
+    </div>
+    <div id="webChat">
+        <textarea id="chat" rows="20" cols="60" readonly> </textarea>
+        <br>
+        <label for="message">Message:</label>
+        <input id="message" name="message" type="text"/>
+        <input id="send" type="button" value="Send" />
+    </div>
+    <input id="startButton" type="button" value="Start"/>
+    <div id="wordDiv">
+    </div>
+    <div id="startRoom">
+        <label for="user">Name:</label>
+        <input id="username" name="user" type="text"/>
+        <br> <br>
+        <label for="room">Room:</label>
+        <input id="roomNum" name="room" type="text"/>
+        <br> 
+        <br>
+        <input id="connect" type='button' value='Connect'/>
+        <input id="disconnect" type='button' value='Disconnect'/>
+        <br> <br>
+    </div>
+</body>
+</html>

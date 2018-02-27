@@ -124,7 +124,10 @@
         "use strict";
 
 	    let canvas,ctx,lineWidth,strokeStyle,currentTool,fillStyle,topCanvas,topCtx,user,roomNum,socket,mouseX,mouseY,prevX,prevY,mousedown,widthChange,strokeChange,fillChange,toolChange;
+        let artist = false;
+        let gameStart = false;
         const startButton = document.querySelector("#startButton");
+        const wordDiv = document.querySelector("#wordDiv");
         const message = document.querySelector("#message");
         const chat = document.querySelector("#chat");
         chat.innerHTML = "";
@@ -144,6 +147,8 @@
 
         const drawToCanvas = () => {
             // draw to canvas with specified tool, width, and color
+            if(gameStart && !artist) 
+                return;
             switch(currentTool) {
                 case TOOL_PENCIL:
                     topCtx.lineWidth = lineWidth;
@@ -176,6 +181,8 @@
         };
         
         const getPos = (canvas, e) => {
+            if(gameStart && !artist) 
+                return;
             // get position of mouse and make sure it's in area of the canvas to draw
             prevX = mouseX;
             prevY = mouseY;
@@ -214,6 +221,8 @@
             
             // canvas event listeners 
             canvas.addEventListener('mousemove', (e) => {
+                if(gameStart && !artist) 
+                    return;
                 getPos(canvas, e);
                 if(mousedown) {
                     switch(currentTool) {
@@ -252,6 +261,8 @@
             send.addEventListener('click', sendMsg);    
             disconnect.addEventListener('click', disconnectSocket);   
             startBut.addEventListener('click', startSocket);
+            
+            
             //socket = io.connect();
             //connectSocket();
         };
@@ -261,15 +272,71 @@
             socket = io.connect();
             user = document.querySelector("#username").value;
             roomNum = document.querySelector("#roomNum").value;
+            
             socket.on('connect', () => {
                 if(!user) {
                     user = 'unknown';   
                 }
                 socket.emit('join', { name: user, room: roomNum });
+               
             });
+            
             socket.on('msg', (data) => {
                 chat.innerHTML += data.name + ": " + data.msg + '\n';
             });
+            
+            socket.on('checkUsers', (data) => {
+                if(data.numUsers >= 2) {
+                    startButton.style.display = "none";
+                    wordDiv.style.display = "block";
+                    gameStart = true;
+                }
+                else {
+                    const startFail = {
+                        name: "Server",
+                        msg: "Not enough players to start!",
+                    };
+                    socket.emit('msgToServer', startFail);
+                }
+            });
+            
+             socket.on('showWord', (data) => {       
+                if(user === data.currArtist) {
+                    wordDiv.innerHTML = "Your word is " + data.currWord;
+                    document.querySelector("#send").style.display = "none";
+                    document.querySelector("#controls").style.display = "block";
+                    artist = true;
+                }
+                else {
+                    wordDiv.innerHTML = "Try to guess what the artist is drawing!";
+                    document.querySelector("#send").style.display = "inline-block";
+                    document.querySelector("#controls").style.display = "none";
+                    artist = false;
+                }
+            });
+            
+            socket.on('endRound', (data) => {
+                socket.emit('nextRound');
+            });
+            
+            socket.on('continueGame', (data) => {
+                if(gameStart && data.maxPlayers >= 2) {
+                    socket.emit('clear');
+                    console.log(data.roundNum);
+                    socket.emit('chooseWord', {roundNum: data.roundNum}); 
+                }
+            });
+            
+            socket.on('endGame', () => {
+               endGame(); 
+            });
+            
+            socket.on('userLeave', (data) => {
+                if(gameStart) {
+                    endGame();
+                }
+            });
+            
             // hide connect button and show disconnect button
             document.querySelector('#connect').style.display = "none";
             document.querySelector('#startRoom').style.display = "none";
@@ -308,25 +375,13 @@
         };
         const startSocket = (e) => {
             socket.emit('clickStart');
-            socket.on('checkUsers', (data) => {
-                if(data.numUsers >= 2) {
-                    startRound();
-                    //startButton.style.display = "none";
-                }
-                else {
-                    const startFail = {
-                        name: "Server",
-                        msg: "Not enough players to start!",
-                    };
-                    socket.emit('msgToServer', startFail);
-                }
-            });
         };
         const sendMsg = (e) => {
             // handle sent messages
             let msgSent = {
                 name: user,
                 msg: message.value,
+                roomNum: roomNum,
             };
             
             socket.emit('msgToServer', msgSent);
@@ -339,11 +394,7 @@
                 msg: user + " has left the room.",
             };
             socket.emit('dcMsg', discSent);
-            socket.on('userLeave', (data) => {
-                if(data.numUsers < 2) {
-                    endGame();
-                }
-            });
+           
             socket.emit("disconnect");
             chat.innerHTML += 'Server: You have left the room.' + '\n';
             socket.disconnect();
@@ -352,35 +403,14 @@
             //document.querySelector('#connect').style.display = "inline-block";
         };
 
-        const startRound = () => {
-            socket.emit('chooseWord');
-            socket.on('showWord', (data) => {
-                const startMsg = {
-                    name: "Server",
-                    msg:  data.currArtist + " is the artist. They will try to draw the randomly generated word.",
-                };
-                socket.emit('msgToServer', startMsg);
-                user = document.querySelector("#username").value;
-                var wordDiv = document.querySelector("#wordDiv");
-                wordDiv.style.display = "block";
-                if(user === data.currArtist) 
-                    wordDiv.innerHTML = "Your word is " + data.currWord;
-                else
-                    wordDiv.innerHTML = "Try to guess what the artist is drawing!";
-            });
-            socket.on('endRound', () => {
-                const endMsg = {
-                    name: "Server",
-                    msg:  "Starting new round...",
-                };
-                socket.emit('msgToServer', endMsg);
-                socket.emit('nextRound');
-            });
-
-        }
-        
         const endGame = () => {
             console.log("Game ended");
+            gameStart = false;
+            startButton.style.display = "block";
+            wordDiv.style.display = "none";
+            send.style.display = "inline-block";
+            document.querySelector("#controls").style.display = "block";
+            socket.emit("restart");
         };
 
         window.onload = init;

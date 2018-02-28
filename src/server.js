@@ -35,18 +35,18 @@ app.listen(PORT);
 const onJoined = (sock) => {
   const socket = sock;
   socket.on('searchRoom', (data) => {
-    for(let i = 0; i < usersInRoom; i++) {
-        if (users[`${i}:${data.room}`] === data.name) {
-            socket.emit('nameTaken', { msg: 'Sorry, this username exists in this room already.' });
-        }
+    for (let i = 0; i < usersInRoom; i++) {
+      if (users[`${i}:${data.room}`] === data.name) {
+        socket.emit('nameTaken', { msg: 'Sorry, this username exists in this room already.' });
+      }
     }
-    if(roundNum[data.room] >= 1) {
-        socket.emit('gameStarted', { msg: 'Sorry, this room already has a game in progress.' });
+    if (roundNum[data.room] >= 1) {
+      socket.emit('gameStarted', { msg: 'Sorry, this room already has a game in progress.' });
     }
     // if player with username not in room and if game in room not started, let player join
     socket.emit('letJoin', { name: data.name, roomNum: data.room });
   });
-      
+
   socket.on('join', (data) => {
     // message back to new user
     const joinMsg = {
@@ -86,30 +86,27 @@ const onMsg = (sock) => {
   const socket = sock;
   // handle messages in the chat room
   socket.on('msgToServer', (data) => {
-    if(roundNum[socket.roomNum] > 0) {
-        if(data.msg.toLowerCase() === roundWord[socket.roomNum].toLowerCase()) {
-            socket.score++;
-            io.sockets.in(socket.roomNum).emit('msg', { name: 'Server', msg: `${socket.name} has guessed the word [${roundWord[socket.roomNum]}]. Their score is now ${socket.score}!` });
-            if (socket.score < 10) {
-                socket.emit('endRound');
-                const endMsg = {
-                    name: 'Server',
-                    msg: 'Starting new round...',
-                };
-                io.sockets.in(socket.roomNum).emit('msg', endMsg);
-            } 
-            else if (socket.score === 10) {
-                io.sockets.in(socket.roomNum).emit('msg', { name: 'Server', msg: `${socket.name} has won the game!` });
-                io.sockets.in(socket.roomNum).emit('endGame');
-                roundNum[socket.roomNum] = 1;
-            }
-        } 
-        else { 
-            io.sockets.in(socket.roomNum).emit('msg', { name: data.name, msg: data.msg }); 
-        }   
-    }
-    else { 
-        io.sockets.in(socket.roomNum).emit('msg', { name: data.name, msg: data.msg }); 
+    if (roundNum[socket.roomNum] > 0) {
+      if (data.msg.toLowerCase() === roundWord[socket.roomNum].toLowerCase()) {
+        socket.score++;
+        io.sockets.in(socket.roomNum).emit('msg', { name: 'Server', msg: `${socket.name} has guessed the word [${roundWord[socket.roomNum]}]. Their score is now ${socket.score}!` });
+        if (socket.score < 10) {
+          socket.emit('endRound');
+          const endMsg = {
+            name: 'Server',
+            msg: 'Starting new round...',
+          };
+          io.sockets.in(socket.roomNum).emit('msg', endMsg);
+        } else if (socket.score === 10) {
+          io.sockets.in(socket.roomNum).emit('msg', { name: 'Server', msg: `${socket.name} has won the game!` });
+          io.sockets.in(socket.roomNum).emit('endGame');
+          roundNum[socket.roomNum] = 1;
+        }
+      } else {
+        io.sockets.in(socket.roomNum).emit('msg', { name: data.name, msg: data.msg });
+      }
+    } else {
+      io.sockets.in(socket.roomNum).emit('msg', { name: data.name, msg: data.msg });
     }
   });
 };
@@ -119,12 +116,12 @@ const onGame = (sock) => {
   socket.on('clickStart', () => {
     io.sockets.in(socket.roomNum).emit('checkUsers', { numUsers: io.sockets.adapter.rooms[socket.roomNum].length });
   });
-  
-  socket.on('startGame', (data) => {
+
+  socket.on('startGame', () => {
     roundNum[socket.roomNum] = 1;
     socket.emit('continueGame', { maxPlayers: io.sockets.adapter.rooms[socket.roomNum].length, roundNum: roundNum[socket.roomNum] - 1 });
   });
-    
+
   socket.on('chooseWord', (data) => {
     const room = io.sockets.adapter.rooms[socket.roomNum];
     const artist = data.roundNum % room.length;
@@ -141,7 +138,7 @@ const onGame = (sock) => {
 
   socket.on('nextRound', () => {
     roundNum[socket.roomNum]++;
-    socket.emit('continueGame', { maxPlayers: io.sockets.adapter.rooms[socket.roomNum].length, roundNum: roundNum[socket.roomNum] - 1});
+    socket.emit('continueGame', { maxPlayers: io.sockets.adapter.rooms[socket.roomNum].length, roundNum: roundNum[socket.roomNum] - 1 });
   });
 
   socket.on('restart', () => {
@@ -161,8 +158,8 @@ const onClear = (sock) => {
 const onDisconnect = (sock) => {
   // handles disconnect for a user in game
   const socket = sock;
-  socket.on('disconnect', (data) => {
-    io.sockets.in(socket.roomNum).emit('userLeave', {name: data.name});
+  socket.on('disconnect', () => {
+    io.sockets.in(socket.roomNum).emit('userLeave');
     delete users[`${usersInRoom}:${socket.roomNum}`];
     usersInRoom--;
     socket.leave(socket.roomNum);

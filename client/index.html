@@ -277,8 +277,32 @@
                 if(!user) {
                     user = 'unknown';   
                 }
-                socket.emit('join', { name: user, room: roomNum });
-               
+                socket.emit('searchRoom', {name: user, room: roomNum});
+                //socket.emit('join', { name: user, room: roomNum }); 
+            });
+            
+            socket.on('letJoin', (data) => {
+                socket.emit('join', { name: data.name, room: data.roomNum }); 
+                 // hide connect button and show disconnect button if able to join
+                document.querySelector('#connect').style.display = "none";
+                document.querySelector('#startRoom').style.display = "none";
+                document.querySelector('#canvasGame').style.display = "block";
+                document.querySelector('#webChat').style.display = "block";
+                startButton.style.display = "block";
+            });
+            
+            socket.on('nameTaken', (data) => {
+                window.alert(data.msg);
+                user.value = "";
+                roomNum.value = "";
+                socket.disconnect();
+            });
+            
+            socket.on('gameStarted', (data) => {
+                window.alert(data.msg);
+                user.value = "";
+                roomNum.value = "";
+                socket.disconnect();
             });
             
             socket.on('msg', (data) => {
@@ -289,7 +313,7 @@
                 if(data.numUsers >= 2) {
                     startButton.style.display = "none";
                     wordDiv.style.display = "block";
-                    gameStart = true;
+                    socket.emit('startGame', {numUsers: data.numUsers});
                 }
                 else {
                     const startFail = {
@@ -300,7 +324,7 @@
                 }
             });
             
-             socket.on('showWord', (data) => {       
+            socket.on('showWord', (data) => {       
                 if(user === data.currArtist) {
                     wordDiv.innerHTML = "Your word is " + data.currWord;
                     document.querySelector("#send").style.display = "none";
@@ -320,9 +344,9 @@
             });
             
             socket.on('continueGame', (data) => {
+                gameStart = true;
                 if(gameStart && data.maxPlayers >= 2) {
                     socket.emit('clear');
-                    console.log(data.roundNum);
                     socket.emit('chooseWord', {roundNum: data.roundNum}); 
                 }
             });
@@ -333,18 +357,21 @@
             
             socket.on('userLeave', (data) => {
                 if(gameStart) {
+                    const quitMsg = {
+                        name: 'Server',
+                        msg: 'Player has quit, ending game...',
+                    };
+                    socket.emit('msgToServer', quitMsg);
                     endGame();
-                }
+                }/*
+                else {
+                    const leaveMsg = {
+                        name: 'Server',
+                        msg: data.name + ' has left the room.',
+                    };    
+                    socket.emit('msgToServer', leaveMsg);
+                }*/
             });
-            
-            // hide connect button and show disconnect button
-            document.querySelector('#connect').style.display = "none";
-            document.querySelector('#startRoom').style.display = "none";
-            document.querySelector('#canvasGame').style.display = "block";
-            document.querySelector('#webChat').style.display = "block";
-            startButton.style.display = "block";
-            //document.querySelector('#disconnect').style.display = "inline-block";
-            //socket.emit('join');
             
             // handle canvas events
             topCanvas = document.createElement("canvas");
@@ -373,9 +400,11 @@
                 doClear();
             });
         };
+
         const startSocket = (e) => {
             socket.emit('clickStart');
         };
+
         const sendMsg = (e) => {
             // handle sent messages
             let msgSent = {
@@ -387,24 +416,14 @@
             socket.emit('msgToServer', msgSent);
             message.value = "";
         };
+
         const disconnectSocket = (e) => {
             // handle if a user disconnects
-            const discSent = {
-                name: "Server",
-                msg: user + " has left the room.",
-            };
-            socket.emit('dcMsg', discSent);
-           
-            socket.emit("disconnect");
-            chat.innerHTML += 'Server: You have left the room.' + '\n';
+            socket.emit("disconnect", {name: user});
             socket.disconnect();
-            
-            //document.querySelector('#disconnect').style.display = "none";
-            //document.querySelector('#connect').style.display = "inline-block";
         };
 
         const endGame = () => {
-            console.log("Game ended");
             gameStart = false;
             startButton.style.display = "block";
             wordDiv.style.display = "none";

@@ -25,8 +25,8 @@ const wordBank = ['Foot', 'Dog', 'Yo-yo', 'Phone', 'Flower', 'Eye', 'Computer', 
   'Baseball', 'Soccer', 'Basketball', 'Hockey', 'Frisbee', 'Angel', 'Wheelbarrow', 'Hammer', 'Tuxedo', 'Sled', 'Baguette', 'Television',
   'Fight', 'Alien', 'Candy', 'Lamp', 'Cheese', 'Doorknob', 'Ice Cream', 'Cowboy', 'Pirate', 'Tie', 'Spoon', 'Owl', 'Money', 'Pencil',
   'Laptop', 'Surfing', 'Shark', 'Explosion', 'Torture', 'Lightning', 'Cloud', 'Blueberries', 'Scar', 'Ice Skating', 'Textbook', 'Helicopter'];
-let roundWord = [];
-let roundNum = [];
+const roundWord = [];
+const roundNum = [];
 let usersInRoom = 0;
 let num;
 
@@ -34,6 +34,19 @@ app.listen(PORT);
 
 const onJoined = (sock) => {
   const socket = sock;
+  socket.on('searchRoom', (data) => {
+    for(let i = 0; i < usersInRoom; i++) {
+        if (users[`${i}:${data.room}`] === data.name) {
+            socket.emit('nameTaken', { msg: 'Sorry, this username exists in this room already.' });
+        }
+    }
+    if(roundNum[data.room] >= 1) {
+        socket.emit('gameStarted', { msg: 'Sorry, this room already has a game in progress.' });
+    }
+    // if player with username not in room and if game in room not started, let player join
+    socket.emit('letJoin', { name: data.name, roomNum: data.room });
+  });
+      
   socket.on('join', (data) => {
     // message back to new user
     const joinMsg = {
@@ -53,8 +66,8 @@ const onJoined = (sock) => {
       msg: `${data.name} has joined the room.`,
     };
     socket.broadcast.to(socket.roomNum).emit('msg', response);
-    usersInRoom = io.sockets.adapter.rooms[socket.roomNum].length - 1;
     users[`${usersInRoom}:${socket.roomNum}`] = data.name;
+    usersInRoom++;
     // success message to new user
     socket.emit('msg', { name: 'Server', msg: 'You have joined the room.' });
     socket.emit('msg', joinMsg);
@@ -70,32 +83,34 @@ const onDraw = (sock) => {
 };
 
 const onMsg = (sock) => {
-    const socket = sock;
-    // handle messages in the chat room
-    socket.on('msgToServer', (data) => {
-    if (data.msg.toLowerCase() === roundWord[socket.roomNum].toLowerCase()) {
-        socket.score++;
-        io.sockets.in(socket.roomNum).emit('msg', { name: 'Server', msg: `${socket.name} has guessed the word [${roundWord[socket.roomNum]}]. Their score is now ${socket.score}!` });
-        if (socket.score < 10) { 
-            socket.emit('endRound'); 
-            const endMsg = {
-                name: "Server",
-                msg:  "Starting new round...",
-            };
-            io.sockets.in(socket.roomNum).emit('msg', endMsg); 
+  const socket = sock;
+  // handle messages in the chat room
+  socket.on('msgToServer', (data) => {
+    if(roundNum[socket.roomNum] > 0) {
+        if(data.msg.toLowerCase() === roundWord[socket.roomNum].toLowerCase()) {
+            socket.score++;
+            io.sockets.in(socket.roomNum).emit('msg', { name: 'Server', msg: `${socket.name} has guessed the word [${roundWord[socket.roomNum]}]. Their score is now ${socket.score}!` });
+            if (socket.score < 10) {
+                socket.emit('endRound');
+                const endMsg = {
+                    name: 'Server',
+                    msg: 'Starting new round...',
+                };
+                io.sockets.in(socket.roomNum).emit('msg', endMsg);
+            } 
+            else if (socket.score === 10) {
+                io.sockets.in(socket.roomNum).emit('msg', { name: 'Server', msg: `${socket.name} has won the game!` });
+                io.sockets.in(socket.roomNum).emit('endGame');
+                roundNum[socket.roomNum] = 1;
+            }
         } 
-        else if (socket.score === 10) {
-            io.sockets.in(socket.roomNum).emit('msg', { name: 'Server', msg: `${socket.name} has won the game!` });
-            io.sockets.in(socket.roomNum).emit('endGame');
-            roundNum[socket.roomNum] = 0;
-        }
-    } 
-    else
+        else { 
+            io.sockets.in(socket.roomNum).emit('msg', { name: data.name, msg: data.msg }); 
+        }   
+    }
+    else { 
         io.sockets.in(socket.roomNum).emit('msg', { name: data.name, msg: data.msg }); 
-  });
-
-  socket.on('dcMsg', (data) => {
-    io.sockets.in(socket.roomNum).emit('msg', { name: data.name, msg: data.msg });
+    }
   });
 };
 
@@ -103,31 +118,35 @@ const onGame = (sock) => {
   const socket = sock;
   socket.on('clickStart', () => {
     io.sockets.in(socket.roomNum).emit('checkUsers', { numUsers: io.sockets.adapter.rooms[socket.roomNum].length });
-    roundNum[socket.roomNum] = 0;
-    socket.emit('continueGame', { maxPlayers: io.sockets.adapter.rooms[socket.roomNum].length, roundNum: roundNum[socket.roomNum]});
   });
-
+  
+  socket.on('startGame', (data) => {
+    roundNum[socket.roomNum] = 1;
+    socket.emit('continueGame', { maxPlayers: io.sockets.adapter.rooms[socket.roomNum].length, roundNum: roundNum[socket.roomNum] - 1 });
+  });
+    
   socket.on('chooseWord', (data) => {
     const room = io.sockets.adapter.rooms[socket.roomNum];
     const artist = data.roundNum % room.length;
     num = Math.floor(Math.random() * wordBank.length);
     roundWord[socket.roomNum] = wordBank[num];
-    io.sockets.in(socket.roomNum).emit('showWord', { currWord: roundWord[socket.roomNum], currArtist: users[`${artist}:${socket.roomNum}`]});
-    
+    io.sockets.in(socket.roomNum).emit('showWord', { currWord: roundWord[socket.roomNum], currArtist: users[`${artist}:${socket.roomNum}`] });
+
     const startMsg = {
-        name: "Server",
-        msg:  users[`${artist}:${socket.roomNum}`] + " is the artist. They will try to draw the randomly generated word.",
+      name: 'Server',
+      msg: `${users[`${artist}:${socket.roomNum}`]} is the artist. They will try to draw the randomly generated word.`,
     };
-    io.sockets.in(socket.roomNum).emit('msg', startMsg);
+    socket.emit('msg', startMsg);
   });
 
   socket.on('nextRound', () => {
-      roundNum[socket.roomNum]++;
-      socket.emit('continueGame', {maxPlayers: io.sockets.adapter.rooms[socket.roomNum].length, roundNum: roundNum[socket.roomNum]} );
+    roundNum[socket.roomNum]++;
+    socket.emit('continueGame', { maxPlayers: io.sockets.adapter.rooms[socket.roomNum].length, roundNum: roundNum[socket.roomNum] - 1});
   });
-  
+
   socket.on('restart', () => {
-     socket.score = 0; 
+    socket.score = 0;
+    roundNum[socket.roomNum] = 0;
   });
 };
 
@@ -140,20 +159,14 @@ const onClear = (sock) => {
 };
 
 const onDisconnect = (sock) => {
-    // handles disconnect for a user in game
-    const socket = sock;
-    socket.on('disconnect', () => {
-        delete users[`${usersInRoom}:${socket.roomNum}`];
-        usersInRoom--;
-        io.sockets.in(socket.roomNum).emit('userLeave');
-         socket.leave(socket.roomNum);
-         const quitMsg = {
-            name: "Server",
-            msg:  "Player quit, ending game...",
-        };
-        io.sockets.in(socket.roomNum).emit('msg', quitMsg); 
-    });
-   
+  // handles disconnect for a user in game
+  const socket = sock;
+  socket.on('disconnect', (data) => {
+    io.sockets.in(socket.roomNum).emit('userLeave', {name: data.name});
+    delete users[`${usersInRoom}:${socket.roomNum}`];
+    usersInRoom--;
+    socket.leave(socket.roomNum);
+  });
 };
 
 io.sockets.on('connection', (socket) => {

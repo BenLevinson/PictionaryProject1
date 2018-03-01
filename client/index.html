@@ -309,19 +309,18 @@
                 chat.innerHTML += data.name + ": " + data.msg + '\n';
             });
             
-            socket.on('checkUsers', (data) => {
-                if(data.numUsers >= 2) {
-                    startButton.style.display = "none";
-                    wordDiv.style.display = "block";
-                    socket.emit('startGame', {numUsers: data.numUsers});
-                }
-                else {
-                    const startFail = {
-                        name: "Server",
-                        msg: "Not enough players to start!",
-                    };
-                    socket.emit('msgToServer', startFail);
-                }
+            socket.on('startGame', (data) => {
+                startButton.style.display = "none";
+                wordDiv.style.display = "block";
+                gameStart = true;
+            });
+            
+            socket.on('failStart', (data) => {
+                const startFail = {
+                    name: "Server",
+                    msg: "Not enough players to start!",
+                };
+                socket.emit('msgToServer', startFail);    
             });
             
             socket.on('showWord', (data) => {       
@@ -344,7 +343,6 @@
             });
             
             socket.on('continueGame', (data) => {
-                gameStart = true;
                 if(gameStart && data.maxPlayers >= 2) {
                     socket.emit('clear');
                     socket.emit('chooseWord', {roundNum: data.roundNum}); 
@@ -359,18 +357,16 @@
                 if(gameStart) {
                     const quitMsg = {
                         name: 'Server',
-                        msg: 'Player has quit, ending game...',
+                        msg: data.name + ' has quit, ending game...',
                     };
                     socket.emit('msgToServer', quitMsg);
                     endGame();
-                }/*
-                else {
-                    const leaveMsg = {
-                        name: 'Server',
-                        msg: data.name + ' has left the room.',
-                    };    
-                    socket.emit('msgToServer', leaveMsg);
-                }*/
+                }
+                const leaveMsg = {
+                    name: 'Server',
+                    msg: data.name + ' has left the room.',
+                };    
+                socket.emit('msgToServer', leaveMsg);
             });
             
             // handle canvas events
@@ -419,7 +415,6 @@
 
         const disconnectSocket = (e) => {
             // handle if a user disconnects
-            socket.emit("disconnect", {name: user});
             socket.disconnect();
         };
 

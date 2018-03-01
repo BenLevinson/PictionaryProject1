@@ -6,6 +6,7 @@
             background: #EEEEEE;
             font-family: tahoma, verdana, sans serif;
             width: 100%;
+            overflow-x: hidden;
         }
         textarea {
             resize: none;
@@ -13,7 +14,6 @@
         }
         #canvasGame {
             display: none;
-            
         }
         #title {
             text-align: center;
@@ -312,6 +312,7 @@
             socket.on('startGame', (data) => {
                 startButton.style.display = "none";
                 wordDiv.style.display = "block";
+                chat.innerHTML = "Starting game... \n";
                 gameStart = true;
             });
             
@@ -351,22 +352,6 @@
             
             socket.on('endGame', () => {
                endGame(); 
-            });
-            
-            socket.on('userLeave', (data) => {
-                if(gameStart) {
-                    const quitMsg = {
-                        name: 'Server',
-                        msg: data.name + ' has quit, ending game...',
-                    };
-                    socket.emit('msgToServer', quitMsg);
-                    endGame();
-                }
-                const leaveMsg = {
-                    name: 'Server',
-                    msg: data.name + ' has left the room.',
-                };    
-                socket.emit('msgToServer', leaveMsg);
             });
             
             // handle canvas events
@@ -426,7 +411,10 @@
             document.querySelector("#controls").style.display = "block";
             socket.emit("restart");
         };
-
+        
+        const newWinner = (name) => {
+            document.querySelector("#prevWinner").innerHTML = "Previous Winner: " + name; 
+        };
         window.onload = init;
     </script>
 </head>

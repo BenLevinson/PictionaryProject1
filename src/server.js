@@ -100,7 +100,7 @@ const onMsg = (sock) => {
         } else if (socket.score === 10) {
           io.sockets.in(socket.roomNum).emit('msg', { name: 'Server', msg: `${socket.name} has won the game!` });
           io.sockets.in(socket.roomNum).emit('endGame');
-          roundNum[socket.roomNum] = 1;
+          roundNum[socket.roomNum] = 0;
         }
       } else {
         io.sockets.in(socket.roomNum).emit('msg', { name: data.name, msg: data.msg });
@@ -161,7 +161,20 @@ const onDisconnect = (sock) => {
   // handles disconnect for a user in game
   const socket = sock;
   socket.on('disconnect', () => {
-    io.sockets.in(socket.roomNum).emit('userLeave', { name: socket.name });
+    io.sockets.in(socket.roomNum).emit('endGame');
+    if (roundNum[socket.roomNum] >= 1) {
+      const quitMsg = {
+        name: 'Server',
+        msg: `${socket.name} has quit, ending game...`,
+      };
+      io.sockets.in(socket.roomNum).emit('msg', quitMsg);
+    } else {
+      const leaveMsg = {
+        name: 'Server',
+        msg: `${socket.name} has left the room`,
+      };
+      io.sockets.in(socket.roomNum).emit('msg', leaveMsg);
+    }
     let delUser = false;
     for (let i = 0; i < usersInRoom; i++) {
       if (users[`${i}:${socket.roomNum}`] === socket.name) {
